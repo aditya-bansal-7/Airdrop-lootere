@@ -1,13 +1,15 @@
-import telebot 
+import telebot
 import os
 import requests
 import json
+from bs4 import BeautifulSoup
 
-TOKEN =  os.getenv('TOKEN')
+TOKEN = "7575849361:AAEp9SwCA3XJPxQ1hQa7XXDxJLn2Dy0t8OY"
 
 CMCAPIKEY = "2748b8f5-8e99-4210-845d-78176b3a1f62"
 
 bot = telebot.TeleBot(TOKEN)
+
 
 def get_price(crypto_symbol, currency):
     """Get the price of a cryptocurrency in a given currency."""
@@ -20,17 +22,36 @@ def get_price(crypto_symbol, currency):
             return None
         name = data['data'][(crypto_symbol).upper()]['name']
         slug = data['data'][(crypto_symbol).upper()]['slug']
-        price = data['data'][(crypto_symbol).upper()]['quote'][currency.upper()]['price']
-        percent_change_24h = data['data'][crypto_symbol.upper()]['quote'][currency.upper()]['percent_change_24h']
+        price = data['data'][(crypto_symbol).upper()
+                             ]['quote'][currency.upper()]['price']
+        percent_change_24h = data['data'][crypto_symbol.upper(
+        )]['quote'][currency.upper()]['percent_change_24h']
         return slug, name, price, percent_change_24h
     except KeyError:
         return None
 
-# handle inline callback 
+
+def get_account_balance(address):
+    url = f"https://debank.com/profile/{address}"
+    r = requests.get(url)
+    soup = BeautifulSoup(r.content, 'html.parser')
+    elements = soup.select('[class^="HeaderInfo_totalAssetInner"]')
+    element = elements[0]
+    balance = element.text.strip().split(" ")[0]
+    return balance
+
+
+def is_address_contract(address):
+    return False
+
+# handle inline callback
+
+
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     if call.data == 'deleta':
         bot.delete_message(call.message.chat.id, call.message.message_id)
+
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -94,14 +115,26 @@ def handle_message(message):
 
     msg_arr = message.text.split()
 
+    if message.text.startswith("0x"):
+        address = msg_arr[0]
+
+        isContract: bool = is_address_contract(address)
+        if not isContract:
+            balance, top5 = get_account_balance(address)
+
+        return
+
     if len(msg_arr) == 2 or len(msg_arr) == 3:
-        if(msg_arr[0].isdigit()):
             try:
-                name,slug, price , percent_change_24h = get_price(msg_arr[1], "usd")
+                msg_arr[0] = float(msg_arr[0])
+                name, slug, price, percent_change_24h = get_price(
+                    msg_arr[1], "usd")
                 if len(msg_arr) == 3:
-                    name,slug, price_new , percent_change_24h_new = get_price(msg_arr[1], msg_arr[2])
+                    name, slug, price_new, percent_change_24h_new = get_price(
+                        msg_arr[1], msg_arr[2])
                 if price is not None:
                     msg_txt = f'<code>{name} ({msg_arr[1]}):\n{(price * int(msg_arr[0])):.4f} usd \t\t| {percent_change_24h:.2f}% </code>'
+                    msg_txt += f'<code>{name} ({msg_arr[1]}):\n{( 88 * price * int(msg_arr[0])):.2f} inr </code>'
                     # for inr currency
                     if len(msg_arr) == 3:
                         if msg_arr[2] == "inr" and msg_arr[1] == "usdt":
@@ -109,21 +142,24 @@ def handle_message(message):
                         msg_txt += f'<code>\n{(price_new * int(msg_arr[0])):.2f} {msg_arr[2]}</code>'
 
                     markup = telebot.types.InlineKeyboardMarkup()
-                    markup.add(telebot.types.InlineKeyboardButton(text="Delete", callback_data="deleta"))
-                    markup.add(telebot.types.InlineKeyboardButton(text=name.capitalize(), url="https://coinmarketcap.com/currencies/" + slug))
-                    bot.reply_to(message, text=msg_txt,reply_markup=markup, parse_mode="HTML")
+                    markup.add(telebot.types.InlineKeyboardButton(
+                        text="Delete", callback_data="deleta"))
+                    markup.add(telebot.types.InlineKeyboardButton(
+                        text=name.capitalize(), url="https://coinmarketcap.com/currencies/" + slug))
+                    bot.reply_to(message, text=msg_txt,
+                                 reply_markup=markup, parse_mode="HTML")
                     return
             except Exception as e:
-                print(e)
                 pass
 
-    # calculator 
+    # calculator
     try:
         result = eval(message.text)
         if result is not None:
             bot.reply_to(message, result)
             return
     except:
+
         pass
 
 
